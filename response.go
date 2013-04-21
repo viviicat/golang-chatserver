@@ -1,67 +1,50 @@
 package main
 
 import (
-  "net"
+  "io"
   "bytes"
 )
 
-type Respondable interface {
-  Send(conn net.Conn) error
-}
 
 type Response struct {
-  data []byte
+  *bytes.Buffer
+  Quit bool
 }
 
-func (rs *Response) Send(conn net.Conn) error {
-  conn.Write(rs.data)
-  conn.Write([]byte("\r\n"))
-  return nil
-}
-
-func NewTahcResponse() Response {
-  return Response{[]byte("TAHC")}
+func NewResponse(code string) Response {
+  return Response{bytes.Buffer:bytes.NewBufferString(code+" ")}
 }
 
 func NewOkResponse() Response {
-  return Response{[]byte("OK")}
+  return NewResponse("OK")
 }
 
 func NewMessageResponse(message *Message) Response {
-  return Response{bytes.Join([][]byte{[]byte("FROM"), []byte(message.from), message.data}, []byte(" "))}
+  rs := NewResponse("FROM")
+  rs.WriteString(message.from + " ")
+  rs.Write(message.data)
+  return rs
 }
 
 func NewErrorResponse(err error) Response {
-  return Response{[]byte("ERROR " + err.Error())}
+  rs := NewResponse("ERROR")
+  rs.WriteString(err.Error())
+  return rs
 }
 
-func NewUsersResponse(clients *List) Response {
-  var data string
-  for e := clients.Front(); e != nil; e = e.Next() {
-    data += e.Value.(*Client).username + " "
-  }
-  return Response{[]byte("USERS " + data)}
+func NewFatalErrorResponse(err error) Response {
+  rs := NewErrorResponse(err)
+  rs.Quit = true
+  return rs
 }
 
-func NewRoomsResponse(channels *map[string] *List) Response {
-  var data string
-  for key, _ := range *channels {
-    data += key + " "
-  }
-
-  return Response{[]byte("ROOMS " + data)}
+func NewQuitResponse() Response {
+  rs := NewResponse("TIUQ")
+  rs.Quit = true
+  return rs
 }
 
-
-type QuitResponse struct {
-  Response
+func (rs *Response) WriteTo(w io.Writer) (n int64, err error) {
+  rs.WriteString("\r\n")
+  return rs.Buffer.WriteTo(w)
 }
-
-func NewDisconnectResponse(err error) QuitResponse {
-  return QuitResponse{Response:NewErrorResponse(err)}
-}
-
-func NewQuitResponse() QuitResponse {
-  return QuitResponse{Response:Response{[]byte("TIUQ")}}
-}
-

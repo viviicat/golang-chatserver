@@ -32,7 +32,7 @@ func NewClientId(username string, password []byte) (ClientId, error){
 type Client struct {
   net.Conn
 
-  responseCh chan Respondable
+  responseCh chan *Response
   requestCh chan Requestable
 
   username string
@@ -54,18 +54,19 @@ func (cl *Client) HandleRequest(request []byte) (bool, error) {
       rq := Requests[request_str]()
       rq.SetClient(cl)
 
+      if !rq.Validate() {
+        return false, errors.New("Not authorized to do this")
+      }
+
       err := rq.Create(data)
       if err != nil {
         return false, err
       }
       cl.requestCh <-rq
       response := <-cl.responseCh
-      response.Send(cl.Conn)
+      response.WriteTo(cl)
 
-      if _, ok := response.(*QuitResponse); ok {
-        return true, nil
-      }
-      return false, nil
+      return response.Quit, nil
     }
   }
 
@@ -75,7 +76,7 @@ func (cl *Client) HandleRequest(request []byte) (bool, error) {
 func (cl *Client) Close() error {
   // Defer connection closing
   defer cl.Conn.Close()
- 
+
   // Create a dummy quit request and shuttle it to the other goroutine
   // so its data is cleaned up
   var qr QuitRequest
@@ -105,7 +106,7 @@ func (cl *Client) Serve() {
     if err != nil {
       fmt.Println(err)
       response := NewErrorResponse(err)
-      response.Send(cl.Conn)
+      response.WriteTo(cl)
 
       if _, ok := err.(*DisconnectError); ok {
         fmt.Println("Got disconnect error. Disconnecting")

@@ -6,8 +6,9 @@ import (
 )
 
 type Requestable interface {
+  Validate() bool
   Create(buf []byte) error
-  Handle(dispatcher *Dispatcher) (Respondable, error)
+  Handle(dispatcher *Dispatcher) (*Response, error)
   SetClient(client *Client)
   GetClient() *Client
 }
@@ -18,13 +19,16 @@ type Request struct {
   client *Client
 }
 
+func (rq *Request) Validate() bool {
+  return true
+}
 
 func (rq *Request) Create(buf []byte) error {
   return nil
 }
 
-func (rq *Request) Handle(dispatcher *Dispatcher) (Respondable, error) {
-  rs := NewTahcResponse()
+func (rq *Request) Handle(dispatcher *Dispatcher) (*Response, error) {
+  rs := NewResponse("TAHC")
   return &rs, nil
 }
 
@@ -34,6 +38,16 @@ func (rq *Request) SetClient(client *Client) {
 
 func (rq *Request) GetClient() *Client {
   return rq.client
+}
+
+//////////////////////////////////////////////////
+
+type AuthRequest struct {
+  Request
+}
+
+func (rq *AuthRequest) Validate() bool {
+  return rq.client.loggedIn
 }
 
 //////////////////////////////////////////////////
@@ -62,11 +76,11 @@ func (rq *UserRequest) Create(buf []byte) error {
   return nil
 }
 
-func (rq *UserRequest) Handle(dispatcher *Dispatcher) (Respondable, error) {
+func (rq *UserRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
   if err := dispatcher.ClientLogin(rq.client, rq.id.username, rq.id.password); err != nil {
-    var rs Respondable
+    var rs *Response
     if _, ok := err.(*DisconnectError); ok {
-      dr := NewDisconnectResponse(err)
+      dr := NewFatalErrorResponse(err)
       rs = &dr
     } else {
       er := NewErrorResponse(err)
@@ -82,38 +96,51 @@ func (rq *UserRequest) Handle(dispatcher *Dispatcher) (Respondable, error) {
 //////////////////////////////////////////////////
 
 type UsersRequest struct {
-  Request
+  AuthRequest
 }
 
-func (rq *UsersRequest) Handle(dispatcher *Dispatcher) (Respondable, error) {
-  rs := NewUsersResponse(dispatcher.clients)
+func (rq *UsersRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
+  rs := NewResponse("USERS")
+
+  for e := dispatcher.clients.Front(); e != nil; e = e.Next() {
+    rs.WriteString(e.Value.(*Client).username + " ")
+  }
+
   return &rs, nil
 }
 
 //////////////////////////////////////////////////
 
 type RoomsRequest struct {
-  Request
+  AuthRequest
 }
 
-func (rq *RoomsRequest) Handle(dispatcher *Dispatcher) (Respondable, error) {
-  rs := NewRoomsResponse(&dispatcher.channels)
+func (rq *RoomsRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
+  rs := NewResponse("ROOMS")
+
+  for key, _ := range dispatcher.channels {
+    rs.WriteString(key + " ")
+  }
+
   return &rs, nil
 }
 
 //////////////////////////////////////////////////
 
 type JoinRequest struct {
-  Request
+  AuthRequest
   channel string
 }
 
 func (rq *JoinRequest) Create(buf []byte) error {
+  if len(buf) <= 0 {
+    return errors.New("No channel specified")
+  }
   rq.channel = string(buf)
   return nil
 }
 
-func (rq *JoinRequest) Handle(dispatcher *Dispatcher) (Respondable, error) {
+func (rq *JoinRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
   dispatcher.ClientJoin(rq.client, rq.channel)
 
   rs := NewOkResponse()
@@ -126,11 +153,33 @@ type PartRequest struct {
   JoinRequest
 }
 
-func (rq *PartRequest) Handle(dispatcher *Dispatcher) (Respondable, error) {
-  dispatcher.ClientPart(rq.client, rq.channel)
+func (rq *PartRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
+  err := dispatcher.ClientPart(rq.client, rq.channel)
+  if err != nil {
+    return nil, err
+  }
 
   rs := NewOkResponse()
   return &rs, nil
+}
+
+//////////////////////////////////////////////////
+
+type ListRequest struct {
+  JoinRequest
+}
+
+func (rq *ListRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
+
+  if list := dispatcher.channels[rq.channel]; list != nil {
+    rs := NewResponse("LIST")
+    for e := list.Front(); e != nil; e = e.Next() {
+      rs.WriteString(e.Value.(*Client).username + " ")
+    }
+    return &rs, nil
+  }
+
+  return nil, errors.New("Channel does not exist")
 }
 
 //////////////////////////////////////////////////
@@ -142,20 +191,28 @@ type Message struct {
 }
 
 type SayRequest struct {
-  Request
+  AuthRequest
   Message
 }
 
 func (rq *SayRequest) Create(buf []byte) error {
   spl := bytes.SplitN(buf, []byte(" "), 2)
+
+  if len(spl) < 2 {
+    return errors.New("Missing argument(s)")
+  }
+
   rq.from = rq.client.username
   rq.target = string(spl[0])
   rq.data = spl[1]
   return nil
 }
 
-func (rq *SayRequest) Handle(dispatcher *Dispatcher) (Respondable, error) {
-  dispatcher.ClientSayTo(rq.client, &rq.Message)
+func (rq *SayRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
+  err := dispatcher.ClientSayTo(rq.client, &rq.Message)
+  if err != nil {
+    return nil, err
+  }
 
   rs := NewOkResponse()
   return &rs, nil
@@ -167,7 +224,7 @@ type QuitRequest struct {
   Request
 }
 
-func (rq *QuitRequest) Handle(dispatcher *Dispatcher) (Respondable, error) {
+func (rq *QuitRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
   dispatcher.ClientQuit(rq.client)
   rs := NewQuitResponse()
   return &rs, nil
@@ -182,6 +239,7 @@ var Requests = map[string] func() Requestable {
   "ROOMS" : func() Requestable { return new(RoomsRequest) },
   "JOIN"  : func() Requestable { return new(JoinRequest) },
   "PART"  : func() Requestable { return new(PartRequest) },
+  "LIST"  : func() Requestable { return new(ListRequest) },
   "SAY"   : func() Requestable { return new(SayRequest) },
   "QUIT"  : func() Requestable { return new(QuitRequest) },
 }
