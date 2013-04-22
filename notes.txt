@@ -1,0 +1,14 @@
+buffer doesn't send lengths
+chunking
+
+concatenate bytes with string?
+Use join and wrap in function?
+
+append count at beginning and send properly
+
+chunk if necessary
+
+don't forget about receiving chunks--use state of single client goroutine?
+
+
+udp
