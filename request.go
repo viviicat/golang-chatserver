@@ -188,31 +188,6 @@ func (rq *ListRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
 
 //////////////////////////////////////////////////
 
-type Message struct {
-  *bytes.Buffer
-  from string
-  target string
-}
-
-func NewMessage(from string, target string) Message {
-  return Message{from:from, target:target}
-}
-
-func (m *Message) GetEncoded() []byte {
-  header := m.from + " "
-
-  if len(m.data) <= 99 {
-    header += string(len(m.data))
-    return append([]byte(header), m.data...)
-  }
-
-  retval := []byte(header)
-
-  for i := len(m.data); i > 0; i -= 999 {
-    chunk := append([]byte("C" + string(i)), m.data[len(m.data) - i:]...)
-    retval = append(retval,
-  }
-}
 
 type SayRequest struct {
   AuthRequest
@@ -220,15 +195,11 @@ type SayRequest struct {
 }
 
 func (rq *SayRequest) Create(buf []byte) error {
-  spl := bytes.SplitN(buf, []byte(" "), 2)
-
-  if len(spl) < 2 {
-    return errors.New("Missing argument(s)")
+  msg, err := NewMessage(buf, rq.client)
+  if err != nil {
+    return err
   }
-
-  rq.from = rq.client.username
-  rq.target = string(spl[0])
-  rq.data = spl[1]
+  rq.Message = *msg
   return nil
 }
 

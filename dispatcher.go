@@ -136,7 +136,6 @@ func (d *Dispatcher) ClientPart(client *Client, channel string) error {
 }
 
 func (d *Dispatcher) SayTo(message *Message) error {
-  response := NewMessageResponse(message)
 
   if message.target[0] == '@' {
     channelList, err := d.GetChannel(message.target[1:])
@@ -145,7 +144,7 @@ func (d *Dispatcher) SayTo(message *Message) error {
     }
 
     for e := channelList.Front(); e != nil; e = e.Next() {
-      response.WriteTo(e.Value.(net.Conn))
+      message.WriteTo(e.Value.(net.Conn))
     }
     return nil
   }
@@ -155,7 +154,7 @@ func (d *Dispatcher) SayTo(message *Message) error {
     return err
   }
 
-  response.WriteTo(client.Conn)
+  message.WriteTo(client.Conn)
 
   return nil
 }

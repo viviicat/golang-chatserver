@@ -19,11 +19,6 @@ func NewOkResponse() Response {
   return NewResponse("OK")
 }
 
-func NewMessageResponse(message *Message) Response {
-  rs := NewResponse("FROM")
-  rs.Append(message.GetEncoded())
-  return rs
-}
 
 func NewErrorResponse(err error) Response {
   rs := NewResponse("ERROR")
@@ -56,3 +51,4 @@ func (rs *Response) WriteTo(w io.Writer) (n int, err error) {
   rs.data = append(rs.data, "\r\n"...)
   return w.Write(rs.data)
 }
+

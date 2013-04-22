@@ -89,13 +89,13 @@ func (cl *Client) Close() error {
 func (cl *Client) Serve() {
   defer cl.Close()
 
-  buf := make([]byte, 128)
+  buf := make([]byte, 1024)
 
   for {
     count, err := cl.Read(buf)
     if err != nil {
       fmt.Println(err)
-        return
+      return
     }
     if count <= 0 {
       continue
