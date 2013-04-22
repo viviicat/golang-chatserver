@@ -107,7 +107,7 @@ func (rq *UsersRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
   rs := NewResponse("USERS")
 
   for e := dispatcher.clients.Front(); e != nil; e = e.Next() {
-    rs.WriteString(e.Value.(*Client).username + " ")
+    rs.AppendString(e.Value.(*Client).username)
   }
 
   return &rs, nil
@@ -123,7 +123,7 @@ func (rq *RoomsRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
   rs := NewResponse("ROOMS")
 
   for key, _ := range dispatcher.channels {
-    rs.WriteString(key + " ")
+    rs.AppendString(key)
   }
 
   return &rs, nil
@@ -178,7 +178,7 @@ func (rq *ListRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
   if list := dispatcher.channels[rq.channel]; list != nil {
     rs := NewResponse("LIST")
     for e := list.Front(); e != nil; e = e.Next() {
-      rs.WriteString(e.Value.(*Client).username + " ")
+      rs.AppendString(e.Value.(*Client).username)
     }
     return &rs, nil
   }
@@ -189,9 +189,29 @@ func (rq *ListRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
 //////////////////////////////////////////////////
 
 type Message struct {
+  *bytes.Buffer
   from string
   target string
-  data []byte
+}
+
+func NewMessage(from string, target string) Message {
+  return Message{from:from, target:target}
+}
+
+func (m *Message) GetEncoded() []byte {
+  header := m.from + " "
+
+  if len(m.data) <= 99 {
+    header += string(len(m.data))
+    return append([]byte(header), m.data...)
+  }
+
+  retval := []byte(header)
+
+  for i := len(m.data); i > 0; i -= 999 {
+    chunk := append([]byte("C" + string(i)), m.data[len(m.data) - i:]...)
+    retval = append(retval,
+  }
 }
 
 type SayRequest struct {

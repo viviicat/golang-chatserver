@@ -2,17 +2,17 @@ package main
 
 import (
   "io"
-  "bytes"
 )
 
 
 type Response struct {
-  *bytes.Buffer
+  data []byte
   Quit bool
 }
 
 func NewResponse(code string) Response {
-  return Response{bytes.Buffer:bytes.NewBufferString(code+" ")}
+  data := append([]byte(code), ' ')
+  return Response{data, false}
 }
 
 func NewOkResponse() Response {
@@ -21,14 +21,13 @@ func NewOkResponse() Response {
 
 func NewMessageResponse(message *Message) Response {
   rs := NewResponse("FROM")
-  rs.WriteString(message.from + " ")
-  rs.Write(message.data)
+  rs.Append(message.GetEncoded())
   return rs
 }
 
 func NewErrorResponse(err error) Response {
   rs := NewResponse("ERROR")
-  rs.WriteString(err.Error())
+  rs.AppendString(err.Error())
   return rs
 }
 
@@ -44,7 +43,16 @@ func NewQuitResponse() Response {
   return rs
 }
 
-func (rs *Response) WriteTo(w io.Writer) (n int64, err error) {
-  rs.WriteString("\r\n")
-  return rs.Buffer.WriteTo(w)
+func (rs *Response) AppendString(s string) {
+  rs.Append([]byte(s))
+}
+
+func (rs *Response) Append(data []byte) {
+  data = append(data, ' ')
+  rs.data = append(rs.data, data...)
+}
+
+func (rs *Response) WriteTo(w io.Writer) (n int, err error) {
+  rs.data = append(rs.data, "\r\n"...)
+  return w.Write(rs.data)
 }
