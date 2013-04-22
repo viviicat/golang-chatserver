@@ -67,6 +67,10 @@ func (rq *UserRequest) Create(buf []byte) error {
     return errors.New("Invalid User Request")
   }
 
+  if len(args[1]) < 3 {
+    return errors.New("Password is too short")
+  }
+
   var err error
   rq.id, err = NewClientId(string(args[0]), args[1])
   if err != nil {
@@ -209,7 +213,7 @@ func (rq *SayRequest) Create(buf []byte) error {
 }
 
 func (rq *SayRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
-  err := dispatcher.ClientSayTo(rq.client, &rq.Message)
+  err := dispatcher.SayTo(&rq.Message)
   if err != nil {
     return nil, err
   }

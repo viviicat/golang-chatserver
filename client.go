@@ -16,6 +16,7 @@ type ClientId struct {
 type ClientInfo struct {
   password []byte
   loggedIn bool
+  client *Client
 }
 
 var clientregex = regexp.MustCompile("^[[:alnum:]]+$")

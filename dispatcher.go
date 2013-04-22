@@ -69,19 +69,26 @@ func (d *Dispatcher) ClientLogin(client *Client, username string, password []byt
 
   }
 
-  client.username = username
-
-  client.loggedIn = true
-  client.loginTries = 0
-
   crypt, err := bcrypt.GenerateFromPassword(password, 0)
   if err != nil {
     return err
   }
 
-  d.clientSet[username] = ClientInfo{crypt, true}
+  client.username = username
+
+  client.loggedIn = true
+  client.loginTries = 0
+
+  d.clientSet[username] = ClientInfo{crypt, true, client}
 
   return nil
+}
+
+func (d *Dispatcher) GetClient(username string) (*Client, error) {
+  if info, ok := d.clientSet[username]; ok {
+    return info.client, nil
+  }
+  return nil, errors.New("Client not found")
 }
 
 func (d *Dispatcher) GetChannel(channel string) (*List, error) {
@@ -128,16 +135,29 @@ func (d *Dispatcher) ClientPart(client *Client, channel string) error {
   return errors.New("You are not in this channel")
 }
 
-func (d *Dispatcher) ClientSayTo(client *Client, message *Message) error {
-  channelList, err := d.GetChannel(message.target)
+func (d *Dispatcher) SayTo(message *Message) error {
+
+  if message.target[0] == '@' {
+    channelList, err := d.GetChannel(message.target[1:])
+    if err != nil {
+      return err
+    }
+
+    for e := channelList.Front(); e != nil; e = e.Next() {
+      response := NewMessageResponse(message)
+      response.WriteTo(e.Value.(net.Conn))
+    }
+    return nil
+  }
+
+  client, err := d.GetClient(message.target)
   if err != nil {
     return err
   }
 
-  for e := channelList.Front(); e != nil; e = e.Next() {
-    response := NewMessageResponse(message)
-    response.WriteTo(e.Value.(net.Conn))
-  }
+  response := NewMessageResponse(message)
+  response.WriteTo(client.Conn)
+
   return nil
 }
 
