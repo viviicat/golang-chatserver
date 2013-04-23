@@ -2,7 +2,6 @@ package main
 
 import (
   "strconv"
-  "io"
   "fmt"
   "errors"
   "bytes"
@@ -11,8 +10,7 @@ import (
 type Message struct {
   from string
   target string
-  data []byte
-  chunks *[][]byte
+  chunks [][]byte
 }
 
 
@@ -36,8 +34,12 @@ func NewMessage(data []byte, client *Client) (*Message, error) {
     return nil, err
   }
 
+  // Add FROM header to first chunk
+  msg.chunks[0] = append([]byte("FROM " + msg.from + " "), msg.chunks[0]...)
+
   for more {
-    count, err := client.Read(data)
+    buf := make([]byte, 1024)
+    count, err := client.Read(buf)
     if err != nil {
       return nil, err
     }
@@ -45,7 +47,11 @@ func NewMessage(data []byte, client *Client) (*Message, error) {
       continue
     }
 
-    more, err = msg.AddMessageChunk(bytes.Trim(data[:count], "\r\n"))
+    if *VerboseMode {
+      fmt.Println(string(buf[:count]))
+    }
+
+    more, err = msg.AddMessageChunk(bytes.Trim(buf[:count], "\r\n"))
     if err != nil {
       return nil, err
     }
@@ -62,71 +68,50 @@ func (m *Message) AddMessageChunk(data []byte) (bool, error) {
   if spl[0][0] == 'C' {
     // Make sure this is an actual length specifier and get the count
     if count, err := strconv.Atoi(string(spl[0][1:])); err == nil {
-      // If this is not C0 append
-      if count > 0 {
-        m.data = append(m.data, spl[1]...)
+      if count > 999 {
+        return false, errors.New("Packet size too large")
       }
+      m.chunks = append(m.chunks, append(data, '\n'))
       // Return false if C0/done
       return count != 0, nil
     }
-  } else if _, err := strconv.Atoi(string(spl[0])); len(spl) == 2 && err == nil {
-    m.data = append(m.data, spl[1]...)
+  } else if count, err := strconv.Atoi(string(spl[0])); len(spl) == 2 && err == nil {
+    if count > 99 {
+      return false, errors.New("Packet size too large for short format")
+    }
+    m.chunks = append(m.chunks, append(data, '\n'))
     // Single packet, return false
     return false, nil
   }
-  return false, errors.New("Malformed packet " + string(data))
+  return false, errors.New("Malformed packet ")
 }
 
-// Format a message to be chunked
-func GetMessageChunk(dataRemaining []byte) ([]byte, []byte) {
-  if len(dataRemaining) <= 0 {
-    return []byte("C0\r\n"), nil
-  }
 
-  chunkLen := len(dataRemaining)
-  if chunkLen > 999 {
-    chunkLen = 999
-  }
-  chunk := []byte("C" + strconv.Itoa(chunkLen) + " ")
-  return append(append(chunk, dataRemaining[:chunkLen]...), []byte("\r\n")...), dataRemaining[chunkLen:]
+func (m *Message) GetChunks() [][]byte {
+  return m.chunks
 }
 
-func (m *Message) GetChunks() *[][]byte {
-  if m.chunks != nil {
-    return m.chunks
+func (m *Message) WriteTo(c *Client) (n int, err error) {
+  var strbuf bytes.Buffer
+
+  if *VerboseMode {
+    strbuf.WriteString("SENT to " + c.String() + ": ")
   }
 
-  header := "FROM " + m.from + " "
-
-  // If message shorter than 99 then just send it with length prefixed
-  if len(m.data) <= 99 {
-    fmt.Println(len(m.data))
-    header += strconv.Itoa(len(m.data)) + " "
-    return &[][]byte{append(append([]byte(header), m.data...), []byte("\r\n")...)}
-  }
-
-  // Otherwise, the first chunk should include the header
-  chunk, next := GetMessageChunk(m.data)
-  arr := [][]byte{append([]byte(header), chunk...)}
-
-  for next != nil {
-    chunk, next = GetMessageChunk(next)
-    arr = append(arr, chunk)
-  }
-
-  m.chunks = &arr
-  return &arr
-}
-
-func (m *Message) WriteTo(w io.Writer) (n int, err error) {
   ch := m.GetChunks()
   n = 0
-  for i := range *ch {
-    wr, err := w.Write((*ch)[i])
+  for i := range ch {
+    wr, err := c.Write(ch[i])
+    if *VerboseMode {
+      strbuf.Write(ch[i])
+    }
     if err != nil {
       return -1, err
     }
     n += wr
+  }
+  if *VerboseMode {
+    fmt.Println(strbuf.String())
   }
   return n, nil
 }

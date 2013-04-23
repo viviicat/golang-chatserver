@@ -1,7 +1,6 @@
 package main
 
 import (
-  "fmt"
   "net"
   "container/list"
 )
@@ -30,8 +29,36 @@ func listen(listener net.Listener, mainChan chan net.Conn) {
   }
 }
 
+
+func listenUDP(mainChan chan net.Conn) error {
+  conn, err := net.ListenPacket("udp", ":12180")
+  if err != nil {
+    return err
+  }
+
+  udpConnSet := make(map[string] *FauxConn)
+
+  for {
+    buf := make([]byte, 1024)
+    count, addr, err := conn.ReadFrom(buf)
+    if err != nil {
+      return err
+    }
+
+    fc := udpConnSet[addr.String()]
+    if fc == nil {
+      fc = NewFauxConn(addr, conn)
+      udpConnSet[addr.String()] = fc
+      mainChan <- fc
+    }
+    fc.inCh <- buf[:count]
+
+  }
+
+  return nil
+}
+
 func main() {
-  fmt.Println("Initializing Chat Server...")
   var err error
 
   mainChan := make(chan net.Conn, 10)
@@ -39,23 +66,12 @@ func main() {
   go Dispatch(mainChan)
 
   listener, err := net.Listen("tcp", ":12180")
+  defer listener.Close()
   if err != nil {
-    fmt.Println(err)
     return
   }
 
-  /*laddr, err := net.ResolveIPAddr("ip", ":12180")
-  if err != nil {
-    fmt.Println(err)
-    return
-  }
-
-  conn, err := net.ListenIP("ip",laddr)
-  if err != nil {
-    fmt.Println(err)
-    return
-  }*/
-
+  go listenUDP(mainChan)
   listen(listener, mainChan)
 
 }

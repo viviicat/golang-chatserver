@@ -19,6 +19,7 @@ type Request struct {
   client *Client
 }
 
+
 func (rq *Request) Validate() bool {
   return true
 }
@@ -140,7 +141,11 @@ func (rq *JoinRequest) Create(buf []byte) error {
   if len(buf) <= 0 {
     return errors.New("No channel specified")
   }
-  rq.channel = string(buf)
+  if buf[0] == '@' && len(buf) > 1 {
+    rq.channel = string(buf[1:])
+  } else {
+    rq.channel = string(buf)
+  }
   return nil
 }
 

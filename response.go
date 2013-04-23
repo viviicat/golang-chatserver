@@ -1,7 +1,7 @@
 package main
 
 import (
-  "io"
+  "fmt"
 )
 
 
@@ -47,8 +47,15 @@ func (rs *Response) Append(data []byte) {
   rs.data = append(rs.data, data...)
 }
 
-func (rs *Response) WriteTo(w io.Writer) (n int, err error) {
+func (rs *Response) String() string {
+  return string(rs.data)
+}
+
+func (rs *Response) WriteTo(c *Client) (n int, err error) {
+  if *VerboseMode {
+    fmt.Println("SENT to", c.String()+":", rs)
+  }
   rs.data = append(rs.data, "\r\n"...)
-  return w.Write(rs.data)
+  return c.Write(rs.data)
 }
 

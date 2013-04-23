@@ -6,7 +6,13 @@ import (
   "bytes"
   "regexp"
   "errors"
+  "flag"
 )
+
+var VerboseMode = flag.Bool("v", false, "Verbose mode--enables logging of messages")
+func init() {
+  flag.Parse()
+}
 
 type ClientId struct {
   username string
@@ -42,7 +48,19 @@ type Client struct {
   loginTries int
 }
 
+func (cl *Client) String() string {
+  str := cl.RemoteAddr().String()
+  if cl.loggedIn {
+    return cl.username + " (" + str + ")"
+  }
+  return str
+}
+
 func (cl *Client) HandleRequest(request []byte) (bool, error) {
+  if *VerboseMode {
+    fmt.Println("RCVD from", cl.String()+":", string(request))
+  }
+
   temp := bytes.SplitN(request, []byte(" "), 2)
   code := temp[0]
   var data []byte
@@ -105,7 +123,6 @@ func (cl *Client) Serve() {
     disconn, err := cl.HandleRequest(request)
 
     if err != nil {
-      fmt.Println(err)
       response := NewErrorResponse(err)
       response.WriteTo(cl)
 

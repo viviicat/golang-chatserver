@@ -1,7 +1,6 @@
 package main
 
 import (
-  "fmt"
   "net"
   "container/list"
   "errors"
@@ -104,10 +103,8 @@ func (d *Dispatcher) ClientJoin(client *Client, channel string) error {
   if channelList == nil {
     channelList = &List{list.New()}
     d.channels[channel] = channelList
-    fmt.Println("Created new channel", channel)
   }
   if e := channelList.Find(client); e == nil {
-    fmt.Println("Added user to channel", channel)
     channelList.PushBack(client)
   }
 
@@ -127,7 +124,6 @@ func (d *Dispatcher) ClientPart(client *Client, channel string) error {
   }
 
   if e := channelList.Find(client); e != nil {
-    fmt.Println("Removed user from channel", channel)
     channelList.Remove(e)
     return nil
   }
@@ -144,7 +140,7 @@ func (d *Dispatcher) SayTo(message *Message) error {
     }
 
     for e := channelList.Front(); e != nil; e = e.Next() {
-      message.WriteTo(e.Value.(net.Conn))
+      message.WriteTo(e.Value.(*Client))
     }
     return nil
   }
@@ -154,7 +150,7 @@ func (d *Dispatcher) SayTo(message *Message) error {
     return err
   }
 
-  message.WriteTo(client.Conn)
+  message.WriteTo(client)
 
   return nil
 }
@@ -178,8 +174,6 @@ func Dispatch(connCh chan net.Conn) {
   for {
     select {
       case conn := <-dispatcher.connCh:
-        fmt.Println("Caught a client. serving!")
-
         cl := dispatcher.NewClient(conn)
         dispatcher.clients.PushBack(&cl)
 
@@ -188,7 +182,6 @@ func Dispatch(connCh chan net.Conn) {
       case request := <-dispatcher.requestCh:
         response, err := request.Handle(&dispatcher)
         if err != nil {
-          fmt.Println(err)
           if response == nil {
             er := NewErrorResponse(err)
             response = &er
