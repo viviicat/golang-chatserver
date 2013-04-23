@@ -18,7 +18,7 @@ import (
   "bytes"
 )
 
-func (d *Dispatcher) NewClient(conn net.Conn) Client {
+func (d *Dispatcher) NewClient(conn net.Conn) *Client {
   var cl Client
   cl.responseCh = make(chan *Response, 10)
   cl.requestCh = d.requestCh
@@ -26,7 +26,7 @@ func (d *Dispatcher) NewClient(conn net.Conn) Client {
   cl.loginTries = 0
   cl.Conn = conn
 
-  return cl
+  return &cl
 }
 
 
@@ -35,7 +35,7 @@ type Dispatcher struct {
   clients *List
 
   // Set of unique usernames mapping to password and login status
-  clientSet map[string] ClientInfo
+  clientSet map[string] *ClientInfo
 
   // Map of channels (each channel is a list of clients)
   channels map[string] *List
@@ -50,7 +50,7 @@ type Dispatcher struct {
 func NewDispatcher(connCh chan net.Conn) Dispatcher {
   disp := Dispatcher{
     &List{list.New()},
-    make(map[string] ClientInfo),
+    make(map[string] *ClientInfo),
     make(map[string] *List),
     make(chan Requestable, 10),
     connCh}
@@ -90,7 +90,7 @@ func (d *Dispatcher) ClientLogin(client *Client, username string, password []byt
   client.loggedIn = true
   client.loginTries = 0
 
-  d.clientSet[username] = ClientInfo{password, true, client}
+  d.clientSet[username] = &ClientInfo{password, true, client}
 
   return nil
 }
@@ -188,12 +188,13 @@ func (d *Dispatcher) ClientQuit(client *Client) {
     d.clients.Remove(e)
   }
 
-  // Set state in saved client list
-  cs := d.clientSet[client.username]
-  cs.loggedIn = false
-  // Remove reference to this client instance
-  cs.client = nil
-  d.clientSet[client.username] = cs
+  if client.loggedIn {
+    // Set state in saved client list
+    cs := d.clientSet[client.username]
+    cs.loggedIn = false
+    // Remove reference to this client instance
+    cs.client = nil
+  }
 }
 
 
@@ -207,7 +208,7 @@ func Dispatch(connCh chan net.Conn) {
       // New connection
       case conn := <-dispatcher.connCh:
         cl := dispatcher.NewClient(conn)
-        dispatcher.clients.PushBack(&cl)
+        dispatcher.clients.PushBack(cl)
 
         go cl.Serve()
 

@@ -19,7 +19,9 @@ import (
 type FauxConn struct {
   inCh chan []byte
   addr net.Addr
-  listener *UDPListener
+  mainConn net.PacketConn
+
+  closeCh chan string
 }
 
 // Read from the channel buffer
@@ -29,13 +31,13 @@ func (c *FauxConn) Read(b []byte) (int, error) {
 
 // Write immediately with the main connection
 func (c *FauxConn) Write(b []byte) (int, error) {
-  return c.listener.mainConn.WriteTo(b, c.addr)
+  // May be unsafe?
+  return c.mainConn.WriteTo(b, c.addr)
 }
 
 // Remove listener reference to this when we close
 func (c *FauxConn) Close() error {
-  close(c.inCh)
-  c.listener.connSet[c.addr.String()] = nil
+  c.closeCh <- c.addr.String()
   return nil
 }
 
@@ -62,7 +64,7 @@ func (c *FauxConn) SetWriteDeadline(t time.Time) error {
   return nil
 }
 
-func NewFauxConn(addr net.Addr, listener *UDPListener) *FauxConn {
-  return &FauxConn{make(chan []byte, 10), addr, listener}
+func NewFauxConn(addr net.Addr, mainConn net.PacketConn, closeCh chan string) *FauxConn {
+  return &FauxConn{make(chan []byte, 10), addr, mainConn, closeCh}
 }
 

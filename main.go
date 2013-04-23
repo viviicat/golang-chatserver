@@ -56,8 +56,25 @@ func listen(listener net.Listener, mainChan chan net.Conn) {
 type UDPListener struct {
   connSet map[string] *FauxConn
   mainConn net.PacketConn
+  closeCh chan string
 }
 
+func (l *UDPListener) flushCloses() {
+  for {
+    select {
+      // Since the deletion does not occur until after the ReadFrom returns,
+      // the user is technically not deleted until the next udp message is received.
+      // This means that if the same user were to reconnect in the next udp message,
+      // he would be deleted without a response. However udp doesn't guarantee messages
+      // be received at all, so the user can just be forced to retype the message.
+    case closedIP := <-l.closeCh:
+      delete(l.connSet, closedIP)
+
+    default:
+      return
+    }
+  }
+}
 
 // Listen to the TCP connection
 func listenUDP(mainChan chan net.Conn) error {
@@ -66,9 +83,11 @@ func listenUDP(mainChan chan net.Conn) error {
     return err
   }
 
-  l := UDPListener{make(map[string] *FauxConn), conn}
+  l := UDPListener{make(map[string] *FauxConn), conn, make(chan string, 10)}
 
   for {
+    l.flushCloses()
+
     buf := make([]byte, 1024)
     count, addr, err := conn.ReadFrom(buf)
     if err != nil {
@@ -77,14 +96,13 @@ func listenUDP(mainChan chan net.Conn) error {
 
     fc := l.connSet[addr.String()]
     if fc == nil {
-      fc = NewFauxConn(addr, &l)
+      fc = NewFauxConn(addr, l.mainConn, l.closeCh)
       l.connSet[addr.String()] = fc
       // Inform the dispatcher of the new connection
       mainChan <- fc
     }
     // Send buffer to the client's buffer channel
     fc.inCh <- buf[:count]
-
   }
 
   return nil
