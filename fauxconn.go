@@ -31,7 +31,6 @@ func (c *FauxConn) Read(b []byte) (int, error) {
 
 // Write immediately with the main connection
 func (c *FauxConn) Write(b []byte) (int, error) {
-  // May be unsafe?
   return c.mainConn.WriteTo(b, c.addr)
 }
 
