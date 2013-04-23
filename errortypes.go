@@ -1,3 +1,9 @@
+/* Gavin Langdon
+ * Network Programming
+ * Spring 2013
+ * Chat server
+ */
+
 package main
 
 type DisconnectError struct {

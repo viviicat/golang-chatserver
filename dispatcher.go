@@ -1,3 +1,12 @@
+/* Gavin Langdon
+ * Network Programming
+ * Spring 2013
+ * Chat server
+ */
+
+// The dispatcher gets requests from the clients and handles them in a single thread,
+// dispatching responses and messages
+
 package main
 
 import (
@@ -83,9 +92,14 @@ func (d *Dispatcher) ClientLogin(client *Client, username string, password []byt
   return nil
 }
 
+// Fetch a client by username
 func (d *Dispatcher) GetClient(username string) (*Client, error) {
+  // Find client
   if info, ok := d.clientSet[username]; ok {
-    return info.client, nil
+    // Ensure client is logged in
+    if info.client != nil {
+      return info.client, nil
+    }
   }
   return nil, errors.New("Client not found")
 }
@@ -98,12 +112,15 @@ func (d *Dispatcher) GetChannel(channel string) (*List, error) {
 }
 
 func (d *Dispatcher) ClientJoin(client *Client, channel string) error {
+  // Find the specified channel
   channelList, _ := d.GetChannel(channel)
 
+  // If it doesn't exist, make a new one
   if channelList == nil {
     channelList = &List{list.New()}
     d.channels[channel] = channelList
   }
+  // If the client is not in the channel, add them
   if e := channelList.Find(client); e == nil {
     channelList.PushBack(client)
   }
@@ -118,11 +135,13 @@ func (d *Dispatcher) ClientPartAll(client *Client) {
 }
 
 func (d *Dispatcher) ClientPart(client *Client, channel string) error {
+  // Find channel
   channelList, err := d.GetChannel(channel)
   if err != nil {
     return err
   }
 
+  // If user is in channel, remove
   if e := channelList.Find(client); e != nil {
     channelList.Remove(e)
     return nil
@@ -131,8 +150,9 @@ func (d *Dispatcher) ClientPart(client *Client, channel string) error {
   return errors.New("You are not in this channel")
 }
 
+// Send a message
 func (d *Dispatcher) SayTo(message *Message) error {
-
+  // Messages starting with @ will be to channels
   if message.target[0] == '@' {
     channelList, err := d.GetChannel(message.target[1:])
     if err != nil {
@@ -145,6 +165,7 @@ func (d *Dispatcher) SayTo(message *Message) error {
     return nil
   }
 
+  // Otherwise send a single message to a client
   client, err := d.GetClient(message.target)
   if err != nil {
     return err
@@ -156,29 +177,38 @@ func (d *Dispatcher) SayTo(message *Message) error {
 }
 
 func (d *Dispatcher) ClientQuit(client *Client) {
+  // leave all channels
   d.ClientPartAll(client)
 
+  // Remove from client list
   if e := d.clients.Find(client); e != nil {
     d.clients.Remove(e)
   }
 
+  // Set state in saved client list
   cs := d.clientSet[client.username]
   cs.loggedIn = false
+  // Remove reference to this client instance
+  cs.client = nil
   d.clientSet[client.username] = cs
 }
 
 
+// Dispatch loop adds new connections and fetches requests from existing
+// connections
 func Dispatch(connCh chan net.Conn) {
   dispatcher := NewDispatcher(connCh)
 
   for {
     select {
+      // New connection
       case conn := <-dispatcher.connCh:
         cl := dispatcher.NewClient(conn)
         dispatcher.clients.PushBack(&cl)
 
         go cl.Serve()
 
+      // Existing connection request
       case request := <-dispatcher.requestCh:
         response, err := request.Handle(&dispatcher)
         if err != nil {
@@ -189,6 +219,7 @@ func Dispatch(connCh chan net.Conn) {
             dispatcher.ClientQuit(request.GetClient())
           }
         }
+        // send client loop the response
         request.GetClient().responseCh <- response
     }
   }

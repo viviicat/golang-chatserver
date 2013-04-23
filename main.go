@@ -1,10 +1,32 @@
+/* Gavin Langdon
+ * Network Programming
+ * Spring 2013
+ * Chat server
+ */
+
+
 package main
 
 import (
   "net"
   "container/list"
+  "flag"
 )
 
+var VerboseMode = flag.Bool("v", false, "Verbose mode--enables logging of messages")
+var ListenPort string
+
+func init() {
+  flag.Parse()
+
+  if flag.NArg() < 1 {
+    panic("Port not specified")
+  }
+
+  ListenPort = ":" + flag.Arg(0)
+}
+
+// Custom list so we have a Find method
 type List struct {
   *list.List
 }
@@ -18,6 +40,7 @@ func (l *List) Find(value interface{}) *list.Element {
   return nil
 }
 
+// Listen to the TCP connection
 func listen(listener net.Listener, mainChan chan net.Conn) {
   for {
     conn, err := listener.Accept()
@@ -25,6 +48,7 @@ func listen(listener net.Listener, mainChan chan net.Conn) {
       err.Error()
       return
     }
+    // Send new connection to the dispatcher loop
     mainChan <- conn
   }
 }
@@ -35,8 +59,9 @@ type UDPListener struct {
 }
 
 
+// Listen to the TCP connection
 func listenUDP(mainChan chan net.Conn) error {
-  conn, err := net.ListenPacket("udp", ":12180")
+  conn, err := net.ListenPacket("udp", ListenPort)
   if err != nil {
     return err
   }
@@ -54,8 +79,10 @@ func listenUDP(mainChan chan net.Conn) error {
     if fc == nil {
       fc = NewFauxConn(addr, &l)
       l.connSet[addr.String()] = fc
+      // Inform the dispatcher of the new connection
       mainChan <- fc
     }
+    // Send buffer to the client's buffer channel
     fc.inCh <- buf[:count]
 
   }
@@ -68,15 +95,18 @@ func main() {
 
   mainChan := make(chan net.Conn, 10)
 
+  // Start dispatch loop
   go Dispatch(mainChan)
 
-  listener, err := net.Listen("tcp", ":12180")
+  listener, err := net.Listen("tcp", ListenPort)
   defer listener.Close()
   if err != nil {
     return
   }
 
+  // start udp loop
   go listenUDP(mainChan)
+  // Start TCP loop
   listen(listener, mainChan)
 
 }

@@ -1,3 +1,9 @@
+/* Gavin Langdon
+ * Network Programming
+ * Spring 2013
+ * Chat server
+ */
+
 package main
 
 import (
@@ -6,13 +12,8 @@ import (
   "bytes"
   "regexp"
   "errors"
-  "flag"
 )
 
-var VerboseMode = flag.Bool("v", false, "Verbose mode--enables logging of messages")
-func init() {
-  flag.Parse()
-}
 
 type ClientId struct {
   username string
@@ -46,6 +47,8 @@ type Client struct {
 
   loggedIn bool
   loginTries int
+
+  messagesSent int
 }
 
 func (cl *Client) String() string {

@@ -1,19 +1,34 @@
+/* Gavin Langdon
+ * Network Programming
+ * Spring 2013
+ * Chat server
+ */
+
+// Defines requests the clients can send to the server
+
 package main
 
 import (
   "bytes"
   "errors"
+  "math/rand"
 )
 
 type Requestable interface {
+  // Whether user has permission to do this
   Validate() bool
+  // Create the request in the client thread
   Create(buf []byte) error
+  // Handle the request in the dispatcher thread
   Handle(dispatcher *Dispatcher) (*Response, error)
+
+  // Setter and getter for client 
   SetClient(client *Client)
   GetClient() *Client
 }
 
 //////////////////////////////////////////////////
+// Default request--CHAT returns TAHC response
 
 type Request struct {
   client *Client
@@ -42,6 +57,7 @@ func (rq *Request) GetClient() *Client {
 }
 
 //////////////////////////////////////////////////
+// AuthRequest requires the user be logged in
 
 type AuthRequest struct {
   Request
@@ -52,6 +68,7 @@ func (rq *AuthRequest) Validate() bool {
 }
 
 //////////////////////////////////////////////////
+// UserRequest is the log in request
 
 type UserRequest struct {
   Request
@@ -63,11 +80,13 @@ func (rq *UserRequest) Create(buf []byte) error {
     return errors.New("You are already logged in")
   }
 
+  // Ensure enough arguments
   args := bytes.SplitN(buf, []byte(" "), 2)
   if len(args) != 2 {
     return errors.New("Invalid User Request")
   }
 
+  // Password must be > 2 chars for bcrypt
   if len(args[1]) < 3 {
     return errors.New("Password is too short")
   }
@@ -99,6 +118,7 @@ func (rq *UserRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
 }
 
 //////////////////////////////////////////////////
+// List users
 
 type UsersRequest struct {
   AuthRequest
@@ -115,6 +135,7 @@ func (rq *UsersRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
 }
 
 //////////////////////////////////////////////////
+// List rooms
 
 type RoomsRequest struct {
   AuthRequest
@@ -123,7 +144,7 @@ type RoomsRequest struct {
 func (rq *RoomsRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
   rs := NewResponse("ROOMS")
 
-  for key, _ := range dispatcher.channels {
+  for key, _:= range dispatcher.channels {
     rs.AppendString(key)
   }
 
@@ -131,6 +152,7 @@ func (rq *RoomsRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
 }
 
 //////////////////////////////////////////////////
+// Join a channel
 
 type JoinRequest struct {
   AuthRequest
@@ -141,11 +163,16 @@ func (rq *JoinRequest) Create(buf []byte) error {
   if len(buf) <= 0 {
     return errors.New("No channel specified")
   }
+  // Ignore @ symbol
   if buf[0] == '@' && len(buf) > 1 {
-    rq.channel = string(buf[1:])
-  } else {
-    rq.channel = string(buf)
+    buf = buf[1:]
   }
+  // Require alphanumeric
+  if !clientregex.Match(buf) {
+    return errors.New("Invalid characters for channel name")
+  }
+
+  rq.channel = string(buf)
   return nil
 }
 
@@ -157,6 +184,7 @@ func (rq *JoinRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
 }
 
 //////////////////////////////////////////////////
+// Parting a channel
 
 type PartRequest struct {
   JoinRequest
@@ -173,6 +201,7 @@ func (rq *PartRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
 }
 
 //////////////////////////////////////////////////
+// Listing users in a channel
 
 type ListRequest struct {
   JoinRequest
@@ -192,7 +221,7 @@ func (rq *ListRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
 }
 
 //////////////////////////////////////////////////
-
+// Sending a message
 
 type SayRequest struct {
   AuthRequest
@@ -214,11 +243,25 @@ func (rq *SayRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
     return nil, err
   }
 
+  // Random messages feature
+  if rq.client.messagesSent % 4 >= 3 {
+    // Fetch a random client
+    randClient := dispatcher.clients.Front()
+    for i := 0; i < rand.Intn(dispatcher.clients.Len()); i++ {
+      randClient = randClient.Next()
+    }
+    rmsg, _ := NewRandomMessage(randClient.Value.(*Client), rq.client)
+    dispatcher.SayTo(rmsg)
+  }
+
+  rq.client.messagesSent++
+
   rs := NewOkResponse()
   return &rs, nil
 }
 
 //////////////////////////////////////////////////
+// Quit the channel
 
 type QuitRequest struct {
   Request
@@ -231,6 +274,7 @@ func (rq *QuitRequest) Handle(dispatcher *Dispatcher) (*Response, error) {
 }
 
 //////////////////////////////////////////////////
+// Map strings to functions
 
 var Requests = map[string] func() Requestable {
   "CHAT"  : func() Requestable { return new(Request) },
@@ -243,5 +287,4 @@ var Requests = map[string] func() Requestable {
   "SAY"   : func() Requestable { return new(SayRequest) },
   "QUIT"  : func() Requestable { return new(QuitRequest) },
 }
-
 

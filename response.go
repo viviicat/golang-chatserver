@@ -1,3 +1,12 @@
+/* Gavin Langdon
+ * Network Programming
+ * Spring 2013
+ * Chat server
+ */
+
+
+// A response is sent back to the client upon sending a command
+
 package main
 
 import (
@@ -7,7 +16,7 @@ import (
 
 type Response struct {
   data []byte
-  Quit bool
+  Quit bool // Whether or not this response should cause the client to be disconnected
 }
 
 func NewResponse(code string) Response {
@@ -55,7 +64,7 @@ func (rs *Response) WriteTo(c *Client) (n int, err error) {
   if *VerboseMode {
     fmt.Println("SENT to", c.String()+":", rs)
   }
-  rs.data = append(rs.data, "\r\n"...)
+  rs.data = append(rs.data, "\n"...)
   return c.Write(rs.data)
 }
 

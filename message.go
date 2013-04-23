@@ -1,3 +1,11 @@
+/* Gavin Langdon
+ * Network Programming
+ * Spring 2013
+ * Chat server
+ */
+
+// Specifies messages sent by clients to clients
+
 package main
 
 import (
@@ -5,12 +13,40 @@ import (
   "fmt"
   "errors"
   "bytes"
+  "math/rand"
 )
 
 type Message struct {
   from string
   target string
   chunks [][]byte
+}
+
+// Random messages to send per the requirements
+var RandomStrings = []string {
+  "It’s a hug, Michael. I’m hugging you.",
+  "I think you’re going to be surprised at some of your phrasing.",
+  "Not tricks, Michael, illusions. A trick is something a whore does for money.",
+  "I’m a failure. I can’t even fake the death of a stripper.",
+  "There’s so many poorly chosen words in that sentence.",
+  "She’s not that Mexican, Mom, she’s my Mexican. And she’s Colombian or something.",
+  "I’ve opened a door here that I regret.",
+  "I hear the jury’s still out on science.",
+  "Army had half a day.",
+  "Only two of those words describe Mom, so I know you’re lying to me.",
+  "I don’t understand the question, and I won’t respond to it.",
+}
+
+// Find a random message and send to client
+func NewRandomMessage(from *Client, to *Client) (*Message, error) {
+  str := RandomStrings[rand.Intn(len(RandomStrings)-1)]
+  var msg Message
+  msg.from = from.username
+  msg.target = to.username
+
+  data := []byte(strconv.Itoa(len(str)) + " " + str)
+  _, err := msg.FirstMessageChunk(data)
+  return &msg, err
 }
 
 
@@ -29,13 +65,10 @@ func NewMessage(data []byte, client *Client) (*Message, error) {
 
   // If the message is chunked, use this opportunity to wait for all the chunks
   // (we're still in the client goroutine)
-  more, err := msg.AddMessageChunk(spl[1])
+  more, err := msg.FirstMessageChunk(spl[1])
   if err != nil {
     return nil, err
   }
-
-  // Add FROM header to first chunk
-  msg.chunks[0] = append([]byte("FROM " + msg.from + " "), msg.chunks[0]...)
 
   for more {
     buf := make([]byte, 1024)
@@ -58,6 +91,19 @@ func NewMessage(data []byte, client *Client) (*Message, error) {
   }
 
   return &msg, nil
+}
+
+func (m *Message) FirstMessageChunk(data []byte) (bool, error) {
+  // If the message is chunked, use this opportunity to wait for all the chunks
+  // (we're still in the client goroutine)
+  more, err := m.AddMessageChunk(data)
+  if err != nil {
+    return false, err
+  }
+
+  // Add FROM header to first chunk
+  m.chunks[0] = append([]byte("FROM " + m.from + " "), m.chunks[0]...)
+  return more, nil
 }
 
 func (m *Message) AddMessageChunk(data []byte) (bool, error) {
@@ -91,6 +137,7 @@ func (m *Message) GetChunks() [][]byte {
   return m.chunks
 }
 
+// Write all chunks in sequence to the client
 func (m *Message) WriteTo(c *Client) (n int, err error) {
   var strbuf bytes.Buffer
 
