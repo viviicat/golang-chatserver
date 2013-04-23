@@ -13,7 +13,9 @@ import (
   "net"
   "container/list"
   "errors"
-  "code.google.com/p/go.crypto/bcrypt"
+  // This is working but it requires a go get
+  //"code.google.com/p/go.crypto/bcrypt"
+  "bytes"
 )
 
 func (d *Dispatcher) NewClient(conn net.Conn) Client {
@@ -65,7 +67,8 @@ func (d *Dispatcher) ClientLogin(client *Client, username string, password []byt
     }
 
     // Password incorrect
-    if bcrypt.CompareHashAndPassword(d.clientSet[username].password, password) != nil {
+    //if bcrypt.CompareHashAndPassword(d.clientSet[username].password, password) != nil {
+    if bytes.Compare(d.clientSet[username].password, password) != 0 {
       client.loginTries++
       if client.loginTries >= 3 {
         err := NewDisconnectError("Max login tries. Bye")
@@ -77,17 +80,17 @@ func (d *Dispatcher) ClientLogin(client *Client, username string, password []byt
 
   }
 
-  crypt, err := bcrypt.GenerateFromPassword(password, 0)
+  /*crypt, err := bcrypt.GenerateFromPassword(password, 0)
   if err != nil {
     return err
-  }
+  }*/
 
   client.username = username
 
   client.loggedIn = true
   client.loginTries = 0
 
-  d.clientSet[username] = ClientInfo{crypt, true, client}
+  d.clientSet[username] = ClientInfo{password, true, client}
 
   return nil
 }
