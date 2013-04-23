@@ -29,6 +29,11 @@ func listen(listener net.Listener, mainChan chan net.Conn) {
   }
 }
 
+type UDPListener struct {
+  connSet map[string] *FauxConn
+  mainConn net.PacketConn
+}
+
 
 func listenUDP(mainChan chan net.Conn) error {
   conn, err := net.ListenPacket("udp", ":12180")
@@ -36,7 +41,7 @@ func listenUDP(mainChan chan net.Conn) error {
     return err
   }
 
-  udpConnSet := make(map[string] *FauxConn)
+  l := UDPListener{make(map[string] *FauxConn), conn}
 
   for {
     buf := make([]byte, 1024)
@@ -45,10 +50,10 @@ func listenUDP(mainChan chan net.Conn) error {
       return err
     }
 
-    fc := udpConnSet[addr.String()]
+    fc := l.connSet[addr.String()]
     if fc == nil {
-      fc = NewFauxConn(addr, conn)
-      udpConnSet[addr.String()] = fc
+      fc = NewFauxConn(addr, &l)
+      l.connSet[addr.String()] = fc
       mainChan <- fc
     }
     fc.inCh <- buf[:count]

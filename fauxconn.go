@@ -9,7 +9,7 @@ import (
 type FauxConn struct {
   inCh chan []byte
   addr net.Addr
-  mainConn net.PacketConn
+  listener *UDPListener
 }
 
 func (c *FauxConn) Read(b []byte) (int, error) {
@@ -17,11 +17,12 @@ func (c *FauxConn) Read(b []byte) (int, error) {
 }
 
 func (c *FauxConn) Write(b []byte) (int, error) {
-  return c.mainConn.WriteTo(b, c.addr)
+  return c.listener.mainConn.WriteTo(b, c.addr)
 }
 
 func (c *FauxConn) Close() error {
   close(c.inCh)
+  c.listener.connSet[c.addr.String()] = nil
   return nil
 }
 
@@ -45,7 +46,7 @@ func (c *FauxConn) SetWriteDeadline(t time.Time) error {
   return nil
 }
 
-func NewFauxConn(addr net.Addr, mainConn net.PacketConn) *FauxConn {
-  return &FauxConn{make(chan []byte, 10), addr, mainConn}
+func NewFauxConn(addr net.Addr, listener *UDPListener) *FauxConn {
+  return &FauxConn{make(chan []byte, 10), addr, listener}
 }
 
